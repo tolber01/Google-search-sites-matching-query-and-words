@@ -3,12 +3,14 @@ import requests
 from transliterate import translit
 
 
-def get_google_sites(comp_name, page_index):
+def get_google_sites(comp_name, triggers, page_index):
     """Function gets company name as an argument and returns response object
     from google search custom API.
 
     :param comp_name: company name query to search
     :type comp_name: str
+    :param triggers: words sequence which should be existed in the response
+    :type triggers: list
     :param page_index: parameter where we ne to start current search session
     :type page_index: int
     :return: response_json (dict)
@@ -17,14 +19,15 @@ def get_google_sites(comp_name, page_index):
     search_engine_id = r''
     # Enter your serial data here
 
-    friends_url = r'https://www.googleapis.com/customsearch/v1?' \
+    search_url = r'https://www.googleapis.com/customsearch/v1?' \
         + r'key=' + api_key \
         + r'&cx=' + search_engine_id \
-        + r'&q=' + comp_name \
+        + r'&q=' + '+OR+'.join(triggers) \
+        + r'&hq=' + comp_name \
         + r'&start=' + str(page_index)
 
     response = requests.get(
-        friends_url,
+        search_url,
         verify=None
     )
     response_json = json.loads(response.text)
@@ -32,11 +35,18 @@ def get_google_sites(comp_name, page_index):
     return response_json
 
 
+def get_site_info(site_object):
+    return '{site_title}, link: {site_link}'.format(
+        site_title=site_object['title'],
+        site_link=site_object['link']
+    )
+
+
 if __name__ == '__main__':
     WORDS: list = []
 
     company_name = translit(
-        'query',
+        input('Enter your text query here: '),
         'ru',
         reversed=True
     )
@@ -44,33 +54,33 @@ if __name__ == '__main__':
 
     found_sites_list = []
 
+    all_pages_counter = 0
+
     for start_index in range(1, 100, 10):
         google_sites = get_google_sites(
             company_name,
+            WORDS,
             start_index
         )
-        print(google_sites)
 
         try:
-            found_sites_list += google_sites['items']
-        except KeyError:
-            break
+            found_sites_list = google_sites['items']
+        except KeyError as err:
+            if start_index == 1 and 'error' in found_sites_list:
+                print(
+                    json.dumps(
+                        google_sites,
+                        ensure_ascii=False,
+                        indent=4
+                    )
+                )
+            else:
+                break
+        else:
+            all_pages_counter += len(found_sites_list)
+            for found_site in found_sites_list:
+                print(
+                    get_site_info(found_site)
+                )
 
-    print('All sites found:', len(found_sites_list))
-
-    relevant_pages_counter = 0
-
-    for found_site in found_sites_list:
-        if any(
-            keyword.lower() in found_site['snippet'].lower() for keyword in WORDS
-        ) or any(
-            keyword.lower() in keyword in found_site['title'].lower() for keyword in WORDS
-        ):
-            result_string = found_site['title'] \
-                            + ', link: ' \
-                            + found_site['link']
-            print(result_string)
-
-            relevant_pages_counter += 1
-
-    print('Total need sites:', relevant_pages_counter)
+    print('All sites found: ' + str(all_pages_counter))
